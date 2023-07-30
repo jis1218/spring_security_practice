@@ -11,4 +11,19 @@ public class SecurityController {
         return "hello";
     }
 
+    @GetMapping("/user")
+    public String user() {
+        return "user";
+    }
+
+    @GetMapping("/admin/pay")
+    public String adminPay() {
+        return "adminPay";
+    }
+
+    @GetMapping("/admin/hello")
+    public String adminHello() {
+        return "adminHello";
+    }
+
 }
