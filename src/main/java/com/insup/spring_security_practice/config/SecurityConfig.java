@@ -1,18 +1,28 @@
 package com.insup.spring_security_practice.config;
 
+import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
+import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.security.web.authentication.logout.LogoutHandler;
+import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
+import org.springframework.security.web.savedrequest.RequestCache;
+import org.springframework.security.web.savedrequest.SavedRequest;
 
 @Configuration
 @RequiredArgsConstructor
@@ -22,7 +32,8 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity httpSecurity) throws Exception {
         httpSecurity
             .authorizeHttpRequests((auth) ->
-                auth.requestMatchers("/user").hasRole("USER")
+                auth.requestMatchers("/login").permitAll()
+                    .requestMatchers("/user").hasRole("USER")
                     .requestMatchers("/admin/pay").hasRole("ADMIN")
                     .requestMatchers("/admin/**").hasAnyRole("ADMIN", "SYS")
                     .anyRequest().authenticated()); // 어떠한 요청도 인증을 받아야 함
@@ -30,6 +41,7 @@ public class SecurityConfig {
         httpSecurity.formLogin(httpSecurityFormLoginConfigurer ->
             httpSecurityFormLoginConfigurer.loginProcessingUrl("/login")
                 .usernameParameter("username"));
+
         httpSecurity.logout(httpSecurityLogoutConfigurer -> httpSecurityLogoutConfigurer.logoutUrl("/logout").logoutSuccessUrl("/login").addLogoutHandler(
             new LogoutHandler() {
                 @Override
@@ -50,6 +62,23 @@ public class SecurityConfig {
 
 
         });
+
+        httpSecurity.exceptionHandling(httpSecurityExceptionHandlingConfigurer ->
+            httpSecurityExceptionHandlingConfigurer.authenticationEntryPoint(new AuthenticationEntryPoint() {
+                @Override
+                public void commence(HttpServletRequest request, HttpServletResponse response, AuthenticationException authException)
+                    throws IOException, ServletException {
+                    response.sendRedirect("/login");
+                }
+            })
+                .accessDeniedHandler(new AccessDeniedHandler() {
+                    @Override
+                    public void handle(HttpServletRequest request, HttpServletResponse response, AccessDeniedException accessDeniedException)
+                        throws IOException, ServletException {
+                        response.sendRedirect("/denied");
+                    }
+                })
+        );
 
         return httpSecurity.build();
     }
@@ -74,5 +103,17 @@ public class SecurityConfig {
         return new InMemoryUserDetailsManager(user, user2, user3);
     }
 
-
+    @Bean
+    public AuthenticationSuccessHandler authenticationSuccessHandler() {
+        return new AuthenticationSuccessHandler() {
+            @Override
+            public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response, Authentication authentication)
+                throws IOException, ServletException {
+                RequestCache requestCache = new HttpSessionRequestCache();
+                SavedRequest savedRequest = requestCache.getRequest(request, response);
+                String redirectUrl = savedRequest.getRedirectUrl(); // 세션에 저장되어 있던 인증 정보로 redirect
+                response.sendRedirect(redirectUrl);
+            }
+        };
+    }
 }
