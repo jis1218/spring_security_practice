@@ -1,25 +1,27 @@
 package com.insup.spring_security_practice.config;
 
+import com.insup.spring_security_practice.config.auth.OAuthService;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.util.HashSet;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.mapping.GrantedAuthoritiesMapper;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.oauth2.core.oidc.user.OidcUserAuthority;
+import org.springframework.security.oauth2.core.user.OAuth2UserAuthority;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
-import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
-import org.springframework.security.web.authentication.logout.LogoutHandler;
 import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
 import org.springframework.security.web.savedrequest.RequestCache;
 import org.springframework.security.web.savedrequest.SavedRequest;
@@ -28,59 +30,98 @@ import org.springframework.security.web.savedrequest.SavedRequest;
 @RequiredArgsConstructor
 public class SecurityConfig {
 
+    private final OAuthService customOAuth2UserService;
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity httpSecurity) throws Exception {
+
         httpSecurity
             .authorizeHttpRequests((auth) ->
                 auth.requestMatchers("/login").permitAll()
                     .requestMatchers("/user").hasRole("USER")
                     .requestMatchers("/admin/pay").hasRole("ADMIN")
                     .requestMatchers("/admin/**").hasAnyRole("ADMIN", "SYS")
-                    .anyRequest().authenticated()); // 어떠한 요청도 인증을 받아야 함
-
-        httpSecurity.formLogin(httpSecurityFormLoginConfigurer ->
-            httpSecurityFormLoginConfigurer.loginProcessingUrl("/login")
-                .usernameParameter("username"));
-
-        httpSecurity.logout(httpSecurityLogoutConfigurer -> httpSecurityLogoutConfigurer.logoutUrl("/logout").logoutSuccessUrl("/login").addLogoutHandler(
-            new LogoutHandler() {
-                @Override
-                public void logout(HttpServletRequest request, HttpServletResponse response, Authentication authentication) {
-                    request.getSession().invalidate();
-                }
-            })
-        );
+                    .anyRequest().authenticated()
+            ).oauth2Login((oAuthLogin) -> oAuthLogin.userInfoEndpoint((userInfo) -> userInfo
+                    .userService(customOAuth2UserService)
+            ));
+//        httpSecurity
+//            .authorizeHttpRequests((auth) ->
+//                auth.requestMatchers("/login").permitAll()
+//                    .requestMatchers("/user").hasRole("USER")
+//                    .requestMatchers("/admin/pay").hasRole("ADMIN")
+//                    .requestMatchers("/admin/**").hasAnyRole("ADMIN", "SYS")
+//                    .anyRequest().authenticated()); // 어떠한 요청도 인증을 받아야 함
+//
+//        httpSecurity.formLogin(httpSecurityFormLoginConfigurer ->
+//            httpSecurityFormLoginConfigurer.loginProcessingUrl("/login")
+//                .usernameParameter("username"));
+//
+//        httpSecurity.logout(httpSecurityLogoutConfigurer -> httpSecurityLogoutConfigurer.logoutUrl("/logout").logoutSuccessUrl("/login").addLogoutHandler(
+//            new LogoutHandler() {
+//                @Override
+//                public void logout(HttpServletRequest request, HttpServletResponse response, Authentication authentication) {
+//                    request.getSession().invalidate();
+//                }
+//            })
+//        );
 
 //        httpSecurity.rememberMe(httpSecurityRememberMeConfigurer -> httpSecurityRememberMeConfigurer
 //            .alwaysRemember(true)
 //            .userDetailsService(userDetailsService));
 
-        httpSecurity.sessionManagement(httpSecuritySessionManagementConfigurer -> {
-            httpSecuritySessionManagementConfigurer.maximumSessions(1) // -1 : 무제한 로그인
-                .maxSessionsPreventsLogin(false) // 동시 로그인 차단함, false : 기존 세션 만료(default)
-                .expiredUrl("/expired"); // 세션이 만료된 경우 이동할 페이지
+//        httpSecurity.sessionManagement(httpSecuritySessionManagementConfigurer -> {
+//            httpSecuritySessionManagementConfigurer.maximumSessions(1) // -1 : 무제한 로그인
+//                .maxSessionsPreventsLogin(false) // 동시 로그인 차단함, false : 기존 세션 만료(default)
+//                .expiredUrl("/expired"); // 세션이 만료된 경우 이동할 페이지
+//
+//
+//        });
 
-
-        });
-
-        httpSecurity.exceptionHandling(httpSecurityExceptionHandlingConfigurer ->
-            httpSecurityExceptionHandlingConfigurer.authenticationEntryPoint(new AuthenticationEntryPoint() {
-                @Override
-                public void commence(HttpServletRequest request, HttpServletResponse response, AuthenticationException authException)
-                    throws IOException, ServletException {
-                    response.sendRedirect("/login");
-                }
-            })
-                .accessDeniedHandler(new AccessDeniedHandler() {
-                    @Override
-                    public void handle(HttpServletRequest request, HttpServletResponse response, AccessDeniedException accessDeniedException)
-                        throws IOException, ServletException {
-                        response.sendRedirect("/denied");
-                    }
-                })
-        );
+//        httpSecurity.exceptionHandling(httpSecurityExceptionHandlingConfigurer ->
+//            httpSecurityExceptionHandlingConfigurer.authenticationEntryPoint(new AuthenticationEntryPoint() {
+//                @Override
+//                public void commence(HttpServletRequest request, HttpServletResponse response, AuthenticationException authException)
+//                    throws IOException, ServletException {
+//                    response.sendRedirect("/login");
+//                }
+//            })
+//                .accessDeniedHandler(new AccessDeniedHandler() {
+//                    @Override
+//                    public void handle(HttpServletRequest request, HttpServletResponse response, AccessDeniedException accessDeniedException)
+//                        throws IOException, ServletException {
+//                        response.sendRedirect("/denied");
+//                    }
+//                })
+//        );
 
         return httpSecurity.build();
+    }
+
+    private GrantedAuthoritiesMapper grantedAuthoritiesMapper() {
+        return (authorities) -> {
+            Set<GrantedAuthority> mappedAuthorities = new HashSet<>();
+
+            authorities.forEach((authority) -> {
+                GrantedAuthority mappedAuthority;
+
+                if (authority instanceof OidcUserAuthority) {
+                    OidcUserAuthority userAuthority = (OidcUserAuthority) authority;
+                    mappedAuthority = new OidcUserAuthority(
+                        "OIDC_USER", userAuthority.getIdToken(), userAuthority.getUserInfo());
+                } else if (authority instanceof OAuth2UserAuthority) {
+                    OAuth2UserAuthority userAuthority = (OAuth2UserAuthority) authority;
+                    mappedAuthority = new OAuth2UserAuthority(
+                        "OAUTH2_USER", userAuthority.getAttributes());
+                } else {
+                    mappedAuthority = authority;
+                }
+
+                mappedAuthorities.add(mappedAuthority);
+            });
+
+            return mappedAuthorities;
+        };
     }
 
     @Bean
@@ -116,4 +157,6 @@ public class SecurityConfig {
             }
         };
     }
+
+
 }
